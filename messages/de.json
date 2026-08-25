@@ -1,0 +1,91 @@
+{
+  "common": {
+    "appName": "RS Stundenerfassung",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "confirmDelete": "Diesen Eintrag wirklich löschen?",
+    "loading": "Wird geladen...",
+    "logout": "Abmelden",
+    "date": "Datum",
+    "start": "Beginn",
+    "end": "Ende",
+    "break": "Pause (Min.)",
+    "hours": "Stunden",
+    "note": "Notiz",
+    "worker": "Mitarbeiter",
+    "total": "Total",
+    "holiday": "Feiertag",
+    "actions": "Aktionen",
+    "from": "Von",
+    "to": "Bis",
+    "export": "Exportieren",
+    "back": "Zurück",
+    "genericError": "Etwas ist schiefgelaufen. Bitte versuche es erneut."
+  },
+  "login": {
+    "title": "Anmelden",
+    "identifier": "Benutzername oder E-Mail",
+    "password": "Passwort",
+    "submit": "Anmelden",
+    "error": "E-Mail oder Passwort ungültig."
+  },
+  "header": {
+    "dashboard": "Meine Stunden",
+    "admin": "Verwaltung",
+    "workers": "Mitarbeiter"
+  },
+  "dashboard": {
+    "title": "Meine Stunden",
+    "newEntry": "Arbeitstag erfassen",
+    "history": "Verlauf",
+    "weekTotal": "Total diese Woche",
+    "monthTotal": "Total diesen Monat",
+    "noEntries": "Noch keine Einträge vorhanden.",
+    "entrySaved": "Eintrag gespeichert.",
+    "futureDateError": "Zukünftige Daten können nicht erfasst werden.",
+    "pastLimitError": "Dieser Tag liegt mehr als 5 Tage zurück. Bitte wende dich an die Verwaltung für eine Korrektur.",
+    "endBeforeStartError": "Die Endzeit muss nach der Startzeit liegen.",
+    "holidayBadge": "Feiertag (automatisch 8h)",
+    "overrideHoliday": "Trotzdem eigene Zeiten erfassen"
+  },
+  "admin": {
+    "title": "Verwaltung",
+    "allEntries": "Alle Stunden",
+    "filterWorker": "Nach Mitarbeiter filtern",
+    "allWorkers": "Alle Mitarbeiter",
+    "filterFrom": "Von",
+    "filterTo": "Bis",
+    "manageWorkers": "Mitarbeiter verwalten",
+    "addEntry": "Eintrag für einen Tag hinzufügen",
+    "editedBy": "Zuletzt bearbeitet von {name}"
+  },
+  "workers": {
+    "title": "Mitarbeiter verwalten",
+    "createNew": "Neuen Mitarbeiter anlegen",
+    "firstName": "Vorname",
+    "lastName": "Nachname",
+    "create": "Anlegen",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "generatedPassword": "Generiertes Passwort",
+    "credentialsWarning": "Dieses Passwort wird nur jetzt angezeigt. Bitte notieren und dem Mitarbeiter übergeben.",
+    "close": "Schliessen",
+    "active": "Aktiv",
+    "inactive": "Deaktiviert",
+    "deactivate": "Deaktivieren",
+    "activate": "Reaktivieren",
+    "list": "Bestehende Mitarbeiter",
+    "confirmDeactivate": "Diesen Mitarbeiter wirklich deaktivieren? Er kann sich danach nicht mehr anmelden.",
+    "confirmActivate": "Diesen Mitarbeiter wieder aktivieren?"
+  },
+  "export": {
+    "title": "Excel-Export",
+    "month": "Monat",
+    "year": "Jahr",
+    "monthFrom": "Von Monat",
+    "monthTo": "Bis Monat",
+    "download": "Als Excel herunterladen"
+  }
+}

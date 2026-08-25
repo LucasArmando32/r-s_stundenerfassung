@@ -1,0 +1,91 @@
+{
+  "common": {
+    "appName": "RS Registro de Horas",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "delete": "Eliminar",
+    "confirmDelete": "¿Eliminar este registro?",
+    "loading": "Cargando...",
+    "logout": "Cerrar sesión",
+    "date": "Fecha",
+    "start": "Inicio",
+    "end": "Fin",
+    "break": "Pausa (min.)",
+    "hours": "Horas",
+    "note": "Nota",
+    "worker": "Trabajador",
+    "total": "Total",
+    "holiday": "Feriado",
+    "actions": "Acciones",
+    "from": "Desde",
+    "to": "Hasta",
+    "export": "Exportar",
+    "back": "Volver",
+    "genericError": "Algo salió mal. Inténtalo de nuevo."
+  },
+  "login": {
+    "title": "Iniciar sesión",
+    "identifier": "Usuario o correo electrónico",
+    "password": "Contraseña",
+    "submit": "Entrar",
+    "error": "Correo o contraseña incorrectos."
+  },
+  "header": {
+    "dashboard": "Mis horas",
+    "admin": "Administración",
+    "workers": "Trabajadores"
+  },
+  "dashboard": {
+    "title": "Mis horas",
+    "newEntry": "Registrar día de trabajo",
+    "history": "Historial",
+    "weekTotal": "Total esta semana",
+    "monthTotal": "Total este mes",
+    "noEntries": "Todavía no hay registros.",
+    "entrySaved": "Registro guardado.",
+    "futureDateError": "No se pueden registrar fechas futuras.",
+    "pastLimitError": "Este día es de hace más de 5 días. Contacta con la administración para corregirlo.",
+    "endBeforeStartError": "La hora de fin debe ser posterior a la hora de inicio.",
+    "holidayBadge": "Feriado (8h automáticas)",
+    "overrideHoliday": "Registrar horas propias de todos modos"
+  },
+  "admin": {
+    "title": "Administración",
+    "allEntries": "Todas las horas",
+    "filterWorker": "Filtrar por trabajador",
+    "allWorkers": "Todos los trabajadores",
+    "filterFrom": "Desde",
+    "filterTo": "Hasta",
+    "manageWorkers": "Gestionar trabajadores",
+    "addEntry": "Añadir un registro para un día",
+    "editedBy": "Última edición por {name}"
+  },
+  "workers": {
+    "title": "Gestionar trabajadores",
+    "createNew": "Crear nuevo trabajador",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "create": "Crear",
+    "username": "Usuario",
+    "password": "Contraseña",
+    "generatedPassword": "Contraseña generada",
+    "credentialsWarning": "Esta contraseña solo se muestra ahora. Anótala y entrégasela al trabajador.",
+    "close": "Cerrar",
+    "active": "Activo",
+    "inactive": "Desactivado",
+    "deactivate": "Desactivar",
+    "activate": "Reactivar",
+    "list": "Trabajadores existentes",
+    "confirmDeactivate": "¿Desactivar este trabajador? No podrá volver a iniciar sesión.",
+    "confirmActivate": "¿Reactivar este trabajador?"
+  },
+  "export": {
+    "title": "Exportar a Excel",
+    "month": "Mes",
+    "year": "Año",
+    "monthFrom": "Mes desde",
+    "monthTo": "Mes hasta",
+    "download": "Descargar Excel"
+  }
+}
