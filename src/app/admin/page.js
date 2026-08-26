@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { format, startOfMonth } from "date-fns";
-import { getCurrentProfile, createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
+import getDb from "@/lib/db";
 import { getTranslations } from "next-intl/server";
 import Header from "@/components/Header";
 import AdminTable from "@/components/admin/AdminTable";
@@ -8,49 +9,54 @@ import AddEntryForm from "@/components/admin/AddEntryForm";
 import ExportForm from "@/components/admin/ExportForm";
 
 export default async function AdminPage({ searchParams }) {
-  const { user, profile } = await getCurrentProfile();
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (profile?.rol !== "admin") redirect("/dashboard");
+  if (user.rol !== "admin") redirect("/dashboard");
 
   const params = await searchParams;
   const t = await getTranslations();
-  const supabase = await createClient();
+  const db = getDb();
 
   const today = new Date();
   const from = params?.from || format(startOfMonth(today), "yyyy-MM-dd");
   const to = params?.to || format(today, "yyyy-MM-dd");
   const workerId = params?.worker || "";
 
-  const { data: workers = [] } = await supabase
-    .from("users")
-    .select("id, nombre, activo")
-    .eq("rol", "trabajador")
-    .order("nombre");
+  const workers = db
+    .prepare("select id, nombre, activo from users where rol = 'trabajador' order by nombre")
+    .all();
 
-  let query = supabase
-    .from("time_entries")
-    .select("*, users!time_entries_user_id_fkey(nombre)")
-    .gte("fecha", from)
-    .lte("fecha", to)
-    .order("fecha", { ascending: false });
-
-  if (workerId) query = query.eq("user_id", workerId);
-
-  const { data: entries = [] } = await query;
+  const entries = workerId
+    ? db
+        .prepare(
+          `select te.*, u.nombre as worker_nombre from time_entries te
+           join users u on u.id = te.user_id
+           where te.fecha >= ? and te.fecha <= ? and te.user_id = ?
+           order by te.fecha desc`
+        )
+        .all(from, to, workerId)
+    : db
+        .prepare(
+          `select te.*, u.nombre as worker_nombre from time_entries te
+           join users u on u.id = te.user_id
+           where te.fecha >= ? and te.fecha <= ?
+           order by te.fecha desc`
+        )
+        .all(from, to);
 
   const totalsByWorker = {};
-  for (const w of workers ?? []) {
+  for (const w of workers) {
     if (workerId && w.id !== workerId) continue;
     totalsByWorker[w.nombre] = 0;
   }
-  for (const e of entries ?? []) {
-    const name = e.users?.nombre ?? "?";
-    totalsByWorker[name] = (totalsByWorker[name] || 0) + Number(e.horas_calculadas);
+  for (const e of entries) {
+    totalsByWorker[e.worker_nombre] =
+      (totalsByWorker[e.worker_nombre] || 0) + Number(e.horas_calculadas);
   }
 
   return (
     <>
-      <Header profile={profile} />
+      <Header profile={user} />
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6">
         <h1 className="text-xl font-bold text-neutral-900">{t("admin.title")}</h1>
 
@@ -66,7 +72,7 @@ export default async function AdminPage({ searchParams }) {
               className="mt-1 block rounded-md border border-neutral-300 px-3 py-2"
             >
               <option value="">{t("admin.allWorkers")}</option>
-              {(workers ?? []).map((w) => (
+              {workers.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.nombre}
                   {!w.activo ? ` (${t("workers.inactive")})` : ""}
@@ -111,9 +117,11 @@ export default async function AdminPage({ searchParams }) {
           ))}
         </div>
 
-        <AdminTable entries={entries ?? []} />
+        <AdminTable
+          entries={entries.map((e) => ({ ...e, users: { nombre: e.worker_nombre } }))}
+        />
 
-        <AddEntryForm workers={workers ?? []} />
+        <AddEntryForm workers={workers} />
 
         <ExportForm />
       </main>

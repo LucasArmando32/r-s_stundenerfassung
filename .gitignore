@@ -40,6 +40,9 @@ yarn-error.log*
 # Claude Code local session state
 .claude/
 
+# SQLite database (local dev / never commit real data)
+/data/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -1,14 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import getDb, { restaurarFeriadoSiAplica } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 import { calcularHoras, esFechaFutura, dentroDeVentanaEdicion } from "@/lib/hours";
 
 export async function saveEntry(_prevState, formData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) return { error: "auth" };
 
   const fecha = formData.get("fecha")?.toString();
@@ -25,7 +24,7 @@ export async function saveEntry(_prevState, formData) {
     return { error: "future" };
   }
 
-  if (!dentroDeVentanaEdicion(fecha)) {
+  if (user.rol !== "admin" && !dentroDeVentanaEdicion(fecha)) {
     return { error: "pastLimit" };
   }
 
@@ -34,23 +33,34 @@ export async function saveEntry(_prevState, formData) {
     return { error: "invalidRange" };
   }
 
-  const { error } = await supabase.from("time_entries").upsert(
-    {
-      user_id: user.id,
-      fecha,
-      hora_inicio: horaInicio,
-      hora_fin: horaFin,
-      pausa_minutos: pausaMinutos,
-      horas_calculadas: horasCalculadas,
-      nota,
-      es_feriado: false,
-      editado_por: user.id,
-    },
-    { onConflict: "user_id,fecha" }
-  );
+  const db = getDb();
+  const existing = db
+    .prepare("select id from time_entries where user_id = ? and fecha = ?")
+    .get(user.id, fecha);
 
-  if (error) {
-    return { error: "db" };
+  if (existing) {
+    db.prepare(
+      `update time_entries
+       set hora_inicio = ?, hora_fin = ?, pausa_minutos = ?, horas_calculadas = ?,
+           nota = ?, es_feriado = 0, editado_por = ?, actualizado_en = datetime('now')
+       where id = ?`
+    ).run(horaInicio, horaFin, pausaMinutos, horasCalculadas, nota, user.id, existing.id);
+  } else {
+    db.prepare(
+      `insert into time_entries
+         (id, user_id, fecha, hora_inicio, hora_fin, pausa_minutos, horas_calculadas, nota, es_feriado, editado_por)
+       values (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
+    ).run(
+      crypto.randomUUID(),
+      user.id,
+      fecha,
+      horaInicio,
+      horaFin,
+      pausaMinutos,
+      horasCalculadas,
+      nota,
+      user.id
+    );
   }
 
   revalidatePath("/dashboard");
@@ -58,19 +68,17 @@ export async function saveEntry(_prevState, formData) {
 }
 
 export async function deleteEntry(id) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) return { error: "auth" };
 
-  const { error } = await supabase
-    .from("time_entries")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
+  const db = getDb();
+  const entry = db
+    .prepare("select fecha from time_entries where id = ? and user_id = ?")
+    .get(id, user.id);
+  if (!entry) return { error: "db" };
 
-  if (error) return { error: "db" };
+  db.prepare("delete from time_entries where id = ? and user_id = ?").run(id, user.id);
+  restaurarFeriadoSiAplica(user.id, entry.fecha);
 
   revalidatePath("/dashboard");
   return { success: true };

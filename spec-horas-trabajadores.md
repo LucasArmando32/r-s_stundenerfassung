@@ -4,13 +4,18 @@
 
 Web app sencilla para que los trabajadores registren sus horas trabajadas, y donde la jefa tenga un panel de administración para ver, corregir y exportar las horas de todo el equipo.
 
+> Nota: esta es una aplicación **independiente** de la app de obras/tablero (ver documento aparte `spec-tablero-obras.md`) — cada una es su propio proyecto Next.js con su propia base de datos SQLite (ver sección 2).
+
 ## 2. Stack técnico
 
-- **Next.js** (JavaScript, no TypeScript) — frontend y backend integrados en el mismo proyecto (API routes / Server Actions).
-- **Supabase self-hosted** (desplegado vía plantilla de Dokploy) — base de datos Postgres + autenticación (login por email/contraseña) + Row Level Security para permisos.
+- **Next.js** (JavaScript, no TypeScript) — frontend y backend integrados en el mismo proyecto (API routes / Server Actions). Contenedor Docker propio para esta app.
+- **SQLite** — base de datos embebida (un solo archivo en disco, sin proceso/contenedor propio). El propio backend de Next.js lee y escribe directamente ese archivo (ej. con `better-sqlite3` o similar). No hace falta Postgres ni Supabase.
+- **Autenticación propia** (no Supabase Auth): login con usuario/contraseña gestionado por el código de la app — contraseña guardada con hash (ej. bcrypt), sesión con cookie firmada. Sencillo de implementar dado que solo hay un puñado de cuentas (trabajadores + jefa).
 - **Tailwind CSS** — estilos.
 - **Idiomas:** alemán y español (ver sección 8).
-- **Despliegue:** Dokploy (Docker), en el mismo servidor donde ya corre el resto de servicios del usuario.
+- **Despliegue:** Dokploy (Docker), en el mismo servidor donde ya corre el resto de servicios del usuario. El archivo `.sqlite` se guarda en un volumen persistente del contenedor, para que sobreviva a los redeploys.
+
+> Nota sobre por qué SQLite y no Supabase: el servidor actual (Hetzner, 3.7GB RAM) ya está bastante justo de recursos (visto con `free -h`: swap al 75% de uso) y aloja varios proyectos más. Supabase self-hosted completo son 10+ contenedores (Postgres, Auth, API, Realtime, Studio, etc.) que fácilmente suman 1-2GB de RAM — arriesgado en este servidor. Dado que esta app maneja pocos usuarios y un volumen de datos modesto, SQLite es una base de datos real (no un archivo de texto suelto) pero sin ningún proceso/contenedor extra corriendo — resuelve la necesidad de datos estructurados sin el peso de Supabase.
 
 ## 3. Roles de usuario
 
@@ -52,15 +57,15 @@ Web app sencilla para que los trabajadores registren sus horas trabajadas, y don
 - Esto se refleja igual en el dashboard del trabajador y en el panel/exportación de la jefa, etiquetado claramente como "Feriado" (no como una entrada manual normal).
 - Un trabajador o la jefa pueden sobrescribir esa entrada automática si, por ejemplo, alguien sí trabajó ese día (obra urgente).
 
-## 5. Modelo de datos (tablas en Postgres/Supabase)
+## 5. Modelo de datos (tablas en SQLite)
 
 **users**
 - id
-- email
+- email (interno, generado a partir de nombre.apellido)
 - nombre
 - rol (`trabajador` | `admin`)
 - activo (booleano, para poder desactivar sin borrar)
-- (la contraseña la gestiona Supabase Auth, no se guarda en esta tabla)
+- password_hash (contraseña guardada con hash, ej. bcrypt — no en texto plano)
 
 **time_entries**
 - id
@@ -90,7 +95,9 @@ Web app sencilla para que los trabajadores registren sus horas trabajadas, y don
 
 ## 7. Seguridad
 
-- Row Level Security en Supabase: un trabajador solo puede leer/escribir sus propias filas en `time_entries` (y solo dentro de la ventana de 5 días); la jefa (rol `admin`) puede leer/escribir todas, sin límite de fecha.
+**Criterio general:** el login existe para **identificar quién es quién** (que cada entrada de horas quede atribuida a la persona correcta, que cada uno vea solo lo suyo), no porque la información sea confidencial o sensible. No se maneja aquí ningún dato delicado (sin datos bancarios, médicos, etc.). Por eso el login se mantiene intencionalmente simple y de baja fricción (contraseña fácil de copiar/pegar, sesión persistente, sin verificaciones extra) — no hace falta añadirle seguridad de nivel bancario ni pasos adicionales "por si acaso".
+
+- Como ya no hay Row Level Security de base de datos (SQLite no lo tiene), estas reglas se aplican **en el código del backend** (las API routes / Server Actions de Next.js), verificando siempre la sesión antes de leer/escribir: un trabajador solo puede leer/escribir sus propias filas en `time_entries` (y solo dentro de la ventana de 5 días); la jefa (rol `admin`) puede leer/escribir todas, sin límite de fecha.
 - Rutas protegidas: si no has iniciado sesión, se redirige a `/login`. Si un trabajador intenta entrar a `/admin`, se le deniega el acceso.
 
 ## 8. Idiomas (i18n)
@@ -121,10 +128,18 @@ El diseño de la app debe seguir la misma línea visual que la web corporativa *
   - Fila de totales al final de cada columna (total de horas del mes por trabajador).
 - Si se exporta un rango de varios meses, el archivo incluye una hoja por cada mes dentro de ese rango.
 
+### 10.1 Backup automático (además del volumen persistente)
+
+Dado que esta app maneja información importante (horas trabajadas, base para pagos), además de que el archivo SQLite viva en un volumen persistente (ver sección 11), se agrega una capa extra de respaldo legible y **fuera del servidor**:
+
+- Una tarea programada (cron) genera automáticamente el mismo Excel de exportación (todo el año hasta la fecha) de forma periódica — **una vez por semana** — y lo **envía por correo a la jefa**.
+- Así, aunque el servidor tenga un problema grave, siempre existe una copia reciente y legible (no un archivo técnico de base de datos) fuera de la infraestructura del servidor, en el correo de la jefa.
+- Esto es una capa adicional, no un reemplazo del volumen persistente — el volumen sigue protegiendo contra reinicios/redeploys; este backup semanal protege contra la pérdida total del servidor.
+
 ## 11. Despliegue
 
-- La app Next.js corre como contenedor Docker gestionado por Dokploy.
-- Supabase self-hosted se despliega con la plantilla oficial de Dokploy, en el mismo servidor.
+- La app Next.js corre como su propio contenedor Docker gestionado por Dokploy.
+- El archivo SQLite vive en un volumen persistente montado en ese contenedor (para que los datos sobrevivan a un redeploy).
 
 ## 12. Fuera de alcance para la versión 1
 
@@ -141,4 +156,4 @@ El diseño de la app debe seguir la misma línea visual que la web corporativa *
 
 ---
 
-*Este documento está pensado para entregarse a Claude Code como punto de partida antes de escribir el código del proyecto
+*Este documento está pensado para entregarse a Claude Code como punto de partida antes de escribir el código del proyecto.*

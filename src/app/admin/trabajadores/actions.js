@@ -1,101 +1,67 @@
 "use server";
 
+import crypto from "crypto";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { baseUsername, usernameToEmail, generarPassword } from "@/lib/username";
-
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("rol")
-    .eq("id", user.id)
-    .single();
-
-  return profile?.rol === "admin" ? user : null;
-}
+import getDb, { materializarFeriadosParaUsuario } from "@/lib/db";
+import { requireAdmin, AuthError, hashPassword } from "@/lib/auth";
+import { baseUsername, generarPassword } from "@/lib/username";
 
 export async function createWorker(_prevState, formData) {
-  const admin = await requireAdmin();
-  if (!admin) return { error: "auth" };
+  try {
+    await requireAdmin();
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.code };
+    throw e;
+  }
 
   const nombre = formData.get("nombre")?.toString().trim();
   const apellido = formData.get("apellido")?.toString().trim();
   if (!nombre || !apellido) return { error: "missing" };
 
-  const adminClient = createAdminClient();
   const base = baseUsername(nombre, apellido);
   if (!base || base === ".") return { error: "invalidName" };
 
-  const password = generarPassword();
+  const db = getDb();
+  const exists = db.prepare("select 1 from users where email = ?");
+
   let username = base;
-  let created = null;
-
-  for (let attempt = 0; attempt < 30 && !created; attempt += 1) {
-    if (attempt > 0) username = `${base}${attempt + 1}`;
-    const email = usernameToEmail(username);
-
-    const { data, error } = await adminClient.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-
-    if (!error) {
-      created = data.user;
-      break;
-    }
-
-    const alreadyExists =
-      error.code === "email_exists" ||
-      /already been registered|already exists/i.test(error.message ?? "");
-
-    if (!alreadyExists) {
-      return { error: "db" };
-    }
+  for (let attempt = 1; exists.get(username); attempt += 1) {
+    username = `${base}${attempt + 1}`;
   }
 
-  if (!created) return { error: "db" };
+  const password = generarPassword();
+  const passwordHash = await hashPassword(password);
+  const userId = crypto.randomUUID();
+  const fullName = `${nombre} ${apellido}`;
 
-  const { error: insertError } = await adminClient.from("users").insert({
-    id: created.id,
-    email: usernameToEmail(username),
-    nombre: `${nombre} ${apellido}`,
-    rol: "trabajador",
-    activo: true,
+  const tx = db.transaction(() => {
+    db.prepare(
+      `insert into users (id, email, nombre, rol, activo, password_hash)
+       values (?, ?, ?, 'trabajador', 1, ?)`
+    ).run(userId, username, fullName, passwordHash);
+
+    db.prepare(
+      `insert into worker_credentials (user_id, password_plano) values (?, ?)`
+    ).run(userId, password);
   });
+  tx();
 
-  if (insertError) {
-    await adminClient.auth.admin.deleteUser(created.id);
-    return { error: "db" };
-  }
-
-  await adminClient
-    .from("worker_credentials")
-    .insert({ user_id: created.id, password_plano: password });
+  materializarFeriadosParaUsuario(userId);
 
   revalidatePath("/admin/trabajadores");
-  return { success: true, username, password, nombre: `${nombre} ${apellido}` };
+  return { success: true, username, password, nombre: fullName };
 }
 
 export async function setWorkerActive(userId, activo) {
-  const admin = await requireAdmin();
-  if (!admin) return { error: "auth" };
+  try {
+    await requireAdmin();
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.code };
+    throw e;
+  }
 
-  const adminClient = createAdminClient();
-
-  const { error } = await adminClient.from("users").update({ activo }).eq("id", userId);
-  if (error) return { error: "db" };
-
-  await adminClient.auth.admin.updateUserById(userId, {
-    ban_duration: activo ? "none" : "876000h",
-  });
+  const db = getDb();
+  db.prepare("update users set activo = ? where id = ?").run(activo ? 1 : 0, userId);
 
   revalidatePath("/admin/trabajadores");
   return { success: true };

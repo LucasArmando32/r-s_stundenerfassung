@@ -1,6 +1,5 @@
 import crypto from "crypto";
 
-const EMAIL_DOMAIN = "mitarbeiter.rs-asbestsanierung.ch";
 const PASSWORD_CHARS =
   "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 const COMBINING_MARKS = new RegExp("[\u0300-\u036f]", "g");
@@ -15,10 +14,6 @@ function normalizar(texto) {
 
 export function baseUsername(nombre, apellido) {
   return `${normalizar(nombre)}.${normalizar(apellido)}`;
-}
-
-export function usernameToEmail(username) {
-  return `${username}@${EMAIL_DOMAIN}`;
 }
 
 export function generarPassword(longitud = 10) {

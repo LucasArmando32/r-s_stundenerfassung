@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { getCurrentProfile } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth";
 
 export default async function Home() {
-  const { profile } = await getCurrentProfile();
-  redirect(profile?.rol === "admin" ? "/admin" : "/dashboard");
+  const user = await getCurrentUser();
+  redirect(user?.rol === "admin" ? "/admin" : "/dashboard");
 }

@@ -1,29 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import crypto from "crypto";
+import getDb, { restaurarFeriadoSiAplica } from "@/lib/db";
+import { requireAdmin, AuthError } from "@/lib/auth";
 import { calcularHoras } from "@/lib/hours";
 
-async function requireAdmin() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, user: null };
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("rol")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.rol !== "admin") return { supabase, user: null };
-  return { supabase, user };
-}
-
 export async function adminUpsertEntry(_prevState, formData) {
-  const { supabase, user } = await requireAdmin();
-  if (!user) return { error: "auth" };
+  let admin;
+  try {
+    admin = await requireAdmin();
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.code };
+    throw e;
+  }
 
   const userId = formData.get("userId")?.toString();
   const fecha = formData.get("fecha")?.toString();
@@ -41,33 +31,54 @@ export async function adminUpsertEntry(_prevState, formData) {
     return { error: "invalidRange" };
   }
 
-  const { error } = await supabase.from("time_entries").upsert(
-    {
-      user_id: userId,
-      fecha,
-      hora_inicio: horaInicio,
-      hora_fin: horaFin,
-      pausa_minutos: pausaMinutos,
-      horas_calculadas: horasCalculadas,
-      nota,
-      es_feriado: false,
-      editado_por: user.id,
-    },
-    { onConflict: "user_id,fecha" }
-  );
+  const db = getDb();
+  const existing = db
+    .prepare("select id from time_entries where user_id = ? and fecha = ?")
+    .get(userId, fecha);
 
-  if (error) return { error: "db" };
+  if (existing) {
+    db.prepare(
+      `update time_entries
+       set hora_inicio = ?, hora_fin = ?, pausa_minutos = ?, horas_calculadas = ?,
+           nota = ?, es_feriado = 0, editado_por = ?, actualizado_en = datetime('now')
+       where id = ?`
+    ).run(horaInicio, horaFin, pausaMinutos, horasCalculadas, nota, admin.id, existing.id);
+  } else {
+    db.prepare(
+      `insert into time_entries
+         (id, user_id, fecha, hora_inicio, hora_fin, pausa_minutos, horas_calculadas, nota, es_feriado, editado_por)
+       values (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
+    ).run(
+      crypto.randomUUID(),
+      userId,
+      fecha,
+      horaInicio,
+      horaFin,
+      pausaMinutos,
+      horasCalculadas,
+      nota,
+      admin.id
+    );
+  }
 
   revalidatePath("/admin");
   return { success: true };
 }
 
 export async function adminDeleteEntry(id) {
-  const { supabase, user } = await requireAdmin();
-  if (!user) return { error: "auth" };
+  try {
+    await requireAdmin();
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.code };
+    throw e;
+  }
 
-  const { error } = await supabase.from("time_entries").delete().eq("id", id);
-  if (error) return { error: "db" };
+  const db = getDb();
+  const entry = db.prepare("select user_id, fecha from time_entries where id = ?").get(id);
+  if (!entry) return { error: "db" };
+
+  db.prepare("delete from time_entries where id = ?").run(id);
+  restaurarFeriadoSiAplica(entry.user_id, entry.fecha);
 
   revalidatePath("/admin");
   return { success: true };
