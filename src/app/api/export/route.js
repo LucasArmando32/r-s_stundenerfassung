@@ -60,6 +60,13 @@ export async function GET(request) {
 
   const months = monthsBetween(fromYm, toYm).slice(0, 24);
 
+  const { data: workers = [] } = await supabase
+    .from("users")
+    .select("nombre")
+    .eq("rol", "trabajador")
+    .order("nombre");
+  const workerNames = (workers ?? []).map((w) => w.nombre);
+
   const workbook = new ExcelJS.Workbook();
 
   for (const { year, month } of months) {
@@ -72,10 +79,6 @@ export async function GET(request) {
       .select("fecha, horas_calculadas, es_feriado, users!time_entries_user_id_fkey(id, nombre)")
       .gte("fecha", monthStart)
       .lte("fecha", monthEnd);
-
-    const workerNames = [
-      ...new Set((entries ?? []).map((e) => e.users?.nombre).filter(Boolean)),
-    ].sort();
 
     const sheetName = `${MONTH_NAMES_DE[month - 1]} ${year}`.slice(0, 31);
     const sheet = workbook.addWorksheet(sheetName);
