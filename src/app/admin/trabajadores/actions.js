@@ -1,68 +1,135 @@
 "use server";
 
-import crypto from "crypto";
 import { revalidatePath } from "next/cache";
-import getDb, { materializarFeriadosParaUsuario } from "@/lib/db";
-import { requireAdmin, AuthError, hashPassword } from "@/lib/auth";
-import { baseUsername, generarPassword } from "@/lib/username";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { baseUsername, usernameToEmail, generarPassword } from "@/lib/username";
+
+async function requireAdmin() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("rol")
+    .eq("id", user.id)
+    .single();
+
+  return profile?.rol === "admin" ? user : null;
+}
 
 export async function createWorker(_prevState, formData) {
-  try {
-    await requireAdmin();
-  } catch (e) {
-    if (e instanceof AuthError) return { error: e.code };
-    throw e;
-  }
+  const admin = await requireAdmin();
+  if (!admin) return { error: "auth" };
 
   const nombre = formData.get("nombre")?.toString().trim();
   const apellido = formData.get("apellido")?.toString().trim();
   if (!nombre || !apellido) return { error: "missing" };
 
+  const adminClient = createAdminClient();
   const base = baseUsername(nombre, apellido);
   if (!base || base === ".") return { error: "invalidName" };
 
-  const db = getDb();
-  const exists = db.prepare("select 1 from users where email = ?");
-
+  const password = generarPassword();
   let username = base;
-  for (let attempt = 1; exists.get(username); attempt += 1) {
-    username = `${base}${attempt + 1}`;
+  let created = null;
+
+  for (let attempt = 0; attempt < 30 && !created; attempt += 1) {
+    if (attempt > 0) username = `${base}${attempt + 1}`;
+    const email = usernameToEmail(username);
+
+    const { data, error } = await adminClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+
+    if (!error) {
+      created = data.user;
+      break;
+    }
+
+    const alreadyExists =
+      error.code === "email_exists" ||
+      /already been registered|already exists/i.test(error.message ?? "");
+
+    if (!alreadyExists) {
+      return { error: "db" };
+    }
   }
 
-  const password = generarPassword();
-  const passwordHash = await hashPassword(password);
-  const userId = crypto.randomUUID();
-  const fullName = `${nombre} ${apellido}`;
+  if (!created) return { error: "db" };
 
-  const tx = db.transaction(() => {
-    db.prepare(
-      `insert into users (id, email, nombre, rol, activo, password_hash)
-       values (?, ?, ?, 'trabajador', 1, ?)`
-    ).run(userId, username, fullName, passwordHash);
-
-    db.prepare(
-      `insert into worker_credentials (user_id, password_plano) values (?, ?)`
-    ).run(userId, password);
+  const { error: insertError } = await adminClient.from("users").insert({
+    id: created.id,
+    email: usernameToEmail(username),
+    nombre: `${nombre} ${apellido}`,
+    rol: "trabajador",
+    activo: true,
   });
-  tx();
 
-  materializarFeriadosParaUsuario(userId);
+  if (insertError) {
+    await adminClient.auth.admin.deleteUser(created.id);
+    return { error: "db" };
+  }
+
+  await adminClient
+    .from("worker_credentials")
+    .insert({ user_id: created.id, password_plano: password });
 
   revalidatePath("/admin/trabajadores");
-  return { success: true, username, password, nombre: fullName };
+  return { success: true, username, password, nombre: `${nombre} ${apellido}` };
 }
 
 export async function setWorkerActive(userId, activo) {
-  try {
-    await requireAdmin();
-  } catch (e) {
-    if (e instanceof AuthError) return { error: e.code };
-    throw e;
-  }
+  const admin = await requireAdmin();
+  if (!admin) return { error: "auth" };
 
-  const db = getDb();
-  db.prepare("update users set activo = ? where id = ?").run(activo ? 1 : 0, userId);
+  const adminClient = createAdminClient();
+
+  const { error } = await adminClient.from("users").update({ activo }).eq("id", userId);
+  if (error) return { error: "db" };
+
+  await adminClient.auth.admin.updateUserById(userId, {
+    ban_duration: activo ? "none" : "876000h",
+  });
 
   revalidatePath("/admin/trabajadores");
   return { success: true };
+}
+
+// Links this account to its matching worker row in the Tagesplan app
+// (same Supabase instance, separate `obreros` table) so the Excel export
+// can look up which Baustelle they were sent to each day for Reisezeit.
+export async function linkTagesplanObrero(userId, obreroId) {
+  const admin = await requireAdmin();
+  if (!admin) return { error: "auth" };
+
+  const adminClient = createAdminClient();
+  const { error } = await adminClient
+    .from("users")
+    .update({ tagesplan_obrero_id: obreroId || null })
+    .eq("id", userId);
+
+  if (error) return { error: "db" };
+
+  revalidatePath("/admin/trabajadores");
+  return { success: true };
+}
+
+export async function fetchTagesplanObreros() {
+  const admin = await requireAdmin();
+  if (!admin) return [];
+
+  const adminClient = createAdminClient();
+  const { data } = await adminClient
+    .from("obreros")
+    .select("id, nombre")
+    .eq("tipo", "obrero")
+    .order("nombre");
+
+  return data ?? [];
 }

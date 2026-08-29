@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
-import { setWorkerActive } from "@/app/admin/trabajadores/actions";
+import { setWorkerActive, linkTagesplanObrero } from "@/app/admin/trabajadores/actions";
 
-export default function WorkerList({ workers }) {
+export default function WorkerList({ workers, tagesplanObreros }) {
   const t = useTranslations();
   const [isPending, startTransition] = useTransition();
   const [revealed, setRevealed] = useState(new Set());
@@ -26,6 +26,10 @@ export default function WorkerList({ workers }) {
     });
   }
 
+  function handleLink(userId, obreroId) {
+    startTransition(() => linkTagesplanObrero(userId, obreroId));
+  }
+
   return (
     <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white shadow-sm">
       <table className="w-full text-sm">
@@ -34,6 +38,7 @@ export default function WorkerList({ workers }) {
             <th className="px-3 py-2 font-medium">{t("common.worker")}</th>
             <th className="px-3 py-2 font-medium">{t("workers.username")}</th>
             <th className="px-3 py-2 font-medium">{t("workers.password")}</th>
+            <th className="px-3 py-2 font-medium">{t("workers.tagesplanLink")}</th>
             <th className="px-3 py-2 font-medium">{t("common.actions")}</th>
           </tr>
         </thead>
@@ -54,6 +59,21 @@ export default function WorkerList({ workers }) {
                 ) : (
                   "—"
                 )}
+              </td>
+              <td className="px-3 py-2">
+                <select
+                  defaultValue={w.tagesplan_obrero_id ?? ""}
+                  disabled={isPending}
+                  onChange={(e) => handleLink(w.id, e.target.value)}
+                  className="rounded border border-neutral-300 px-2 py-1 text-xs"
+                >
+                  <option value="">{t("workers.tagesplanNotLinked")}</option>
+                  {tagesplanObreros.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.nombre}
+                    </option>
+                  ))}
+                </select>
               </td>
               <td className="px-3 py-2">
                 <span

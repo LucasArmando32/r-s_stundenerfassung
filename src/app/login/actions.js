@@ -1,8 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import getDb from "@/lib/db";
-import { createSession, verifyPassword } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { usernameToEmail } from "@/lib/username";
 
 export async function login(_prevState, formData) {
   const identifier = formData.get("identifier")?.toString().trim();
@@ -12,20 +12,28 @@ export async function login(_prevState, formData) {
     return { error: true };
   }
 
-  const db = getDb();
-  const user = db
-    .prepare("select id, rol, activo, password_hash from users where email = ?")
-    .get(identifier);
+  const email = identifier.includes("@") ? identifier : usernameToEmail(identifier);
 
-  if (!user || !user.activo) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error || !data.user) {
     return { error: true };
   }
 
-  const valid = await verifyPassword(password, user.password_hash);
-  if (!valid) {
+  const { data: profile } = await supabase
+    .from("users")
+    .select("rol, activo")
+    .eq("id", data.user.id)
+    .single();
+
+  if (!profile?.activo) {
+    await supabase.auth.signOut();
     return { error: true };
   }
 
-  await createSession(user.id);
-  redirect(user.rol === "admin" ? "/admin" : "/dashboard");
+  redirect(profile.rol === "admin" ? "/admin" : "/dashboard");
 }

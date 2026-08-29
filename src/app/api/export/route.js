@@ -1,12 +1,12 @@
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentProfile } from "@/lib/supabase/server";
 import { buildStundenrapport } from "@/lib/excel";
 
 export async function GET(request) {
-  const user = await getCurrentUser();
+  const { user, profile } = await getCurrentProfile();
   if (!user) {
     return new Response("Unauthorized", { status: 401 });
   }
-  if (user.rol !== "admin") {
+  if (profile?.rol !== "admin") {
     return new Response("Forbidden", { status: 403 });
   }
 

@@ -7,7 +7,8 @@ import {
   format,
   endOfMonth,
 } from "date-fns";
-import getDb from "./db";
+import { createClient } from "./supabase/server";
+import { createAdminClient } from "./supabase/admin";
 
 const HOLIDAY_FILL = {
   type: "pattern",
@@ -75,7 +76,7 @@ function weeksInRange(fromYm, toYm) {
 }
 
 export async function buildStundenrapport(fromYm, toYm) {
-  const db = getDb();
+  const supabase = await createClient();
   const weeks = weeksInRange(fromYm, toYm);
   const workbook = new ExcelJS.Workbook();
 
@@ -87,22 +88,38 @@ export async function buildStundenrapport(fromYm, toYm) {
   const overallStart = format(weeks[0].start, "yyyy-MM-dd");
   const overallEnd = format(weeks[weeks.length - 1].end, "yyyy-MM-dd");
 
-  const workers = db
-    .prepare("select id, nombre from users where rol = 'trabajador' order by nombre")
-    .all();
+  const { data: workers = [] } = await supabase
+    .from("users")
+    .select("id, nombre, tagesplan_obrero_id")
+    .eq("rol", "trabajador")
+    .order("nombre");
 
-  for (const worker of workers) {
-    const entries = db
-      .prepare(
-        `select * from time_entries where user_id = ? and fecha >= ? and fecha <= ?`
-      )
-      .all(worker.id, overallStart, overallEnd);
-    const byFecha = Object.fromEntries(entries.map((e) => [e.fecha, e]));
+  const { data: allEntries = [] } = await supabase
+    .from("time_entries")
+    .select("*")
+    .gte("fecha", overallStart)
+    .lte("fecha", overallEnd);
+
+  const reiseData = await fetchReisezeit(
+    (workers ?? []).map((w) => w.tagesplan_obrero_id).filter(Boolean),
+    overallStart,
+    overallEnd
+  );
+
+  for (const worker of workers ?? []) {
+    const byFecha = Object.fromEntries(
+      (allEntries ?? []).filter((e) => e.user_id === worker.id).map((e) => [e.fecha, e])
+    );
+    const reiseByFecha = Object.fromEntries(
+      reiseData
+        .filter((r) => r.obrero_id === worker.tagesplan_obrero_id)
+        .map((r) => [r.fecha, r.reisezeit_minutos])
+    );
 
     const sheet = workbook.addWorksheet(sanitizeSheetName(worker.nombre));
     sheet.columns = [
       { width: 12 }, { width: 12 }, { width: 8 }, { width: 8 },
-      { width: 8 }, { width: 8 }, { width: 10 }, { width: 22 },
+      { width: 8 }, { width: 8 }, { width: 10 }, { width: 12 }, { width: 22 },
     ];
 
     const nameRow = sheet.addRow([worker.nombre]);
@@ -112,17 +129,19 @@ export async function buildStundenrapport(fromYm, toYm) {
 
     for (const week of weeks) {
       const headerRow = sheet.addRow([
-        "Tag", "Datum", "von", "bis", "von", "bis", "Stunden", "Notiz",
+        "Tag", "Datum", "von", "bis", "von", "bis", "Stunden", "Reisezeit", "Notiz",
       ]);
       headerRow.font = { bold: true };
 
       let weekTotal = 0;
+      let weekReise = 0;
       let mittagessen = 0;
 
       for (let i = 0; i < 7; i += 1) {
         const day = addDays(week.start, i);
         const fecha = format(day, "yyyy-MM-dd");
         const entry = byFecha[fecha];
+        const reiseMin = reiseByFecha[fecha] || 0;
         const row = sheet.addRow([
           WEEKDAY_NAMES_DE[day.getDay()],
           format(day, "dd.MM.yyyy"),
@@ -133,7 +152,7 @@ export async function buildStundenrapport(fromYm, toYm) {
           weekTotal += horas;
           if (horas >= MITTAGESSEN_MIN_HORAS) mittagessen += 1;
           row.getCell(7).value = horas;
-          row.getCell(8).value = entry.nota || "";
+          row.getCell(9).value = entry.nota || "";
 
           if (entry.es_feriado) {
             row.getCell(3).value = "Feiertag";
@@ -151,9 +170,18 @@ export async function buildStundenrapport(fromYm, toYm) {
             row.getCell(6).value = bis2;
           }
         }
+
+        if (reiseMin > 0) {
+          weekReise += reiseMin;
+          row.getCell(8).value = `${reiseMin} min`;
+        }
       }
 
-      const totalRow = sheet.addRow(["Total", "", "", "", "", "", Math.round(weekTotal * 100) / 100]);
+      const totalRow = sheet.addRow([
+        "Total", "", "", "", "", "",
+        Math.round(weekTotal * 100) / 100,
+        weekReise > 0 ? `${weekReise} min` : "",
+      ]);
       totalRow.font = { bold: true };
       sheet.addRow([`Anzahl Mittagessen: ${mittagessen}`]);
       sheet.addRow([]);
@@ -169,4 +197,31 @@ export async function buildStundenrapport(fromYm, toYm) {
   }
 
   return workbook;
+}
+
+// Reisezeit lives in the Tagesplan app's tables, on the same shared
+// Supabase/Postgres instance. Every day a worker was assigned to a real
+// Baustelle (asignaciones_diarias), that site's fixed reisezeit_minutos
+// applies — set once by the jefa per site (Lager -> Baustelle).
+async function fetchReisezeit(obreroIds, from, to) {
+  if (!obreroIds.length) return [];
+
+  // Tagesplan's RLS only recognizes admins listed in *its own* usuarios
+  // table, which this app's session isn't part of — use the service role
+  // to read across apps instead of trying to satisfy that policy.
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("asignaciones_diarias")
+    .select("obrero_id, fecha, obras(reisezeit_minutos)")
+    .in("obrero_id", obreroIds)
+    .gte("fecha", from)
+    .lte("fecha", to);
+
+  if (error || !data) return [];
+
+  return data.map((row) => ({
+    obrero_id: row.obrero_id,
+    fecha: row.fecha,
+    reisezeit_minutos: row.obras?.reisezeit_minutos || 0,
+  }));
 }

@@ -69,6 +69,8 @@
     "create": "Anlegen",
     "username": "Benutzername",
     "password": "Passwort",
+    "tagesplanLink": "Tagesplan-Verknüpfung",
+    "tagesplanNotLinked": "Nicht verknüpft",
     "generatedPassword": "Generiertes Passwort",
     "credentialsWarning": "Dieses Passwort wird nur jetzt angezeigt. Bitte notieren und dem Mitarbeiter übergeben.",
     "close": "Schliessen",

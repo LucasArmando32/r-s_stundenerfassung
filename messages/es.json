@@ -69,6 +69,8 @@
     "create": "Crear",
     "username": "Usuario",
     "password": "Contraseña",
+    "tagesplanLink": "Vínculo con Tagesplan",
+    "tagesplanNotLinked": "Sin vincular",
     "generatedPassword": "Contraseña generada",
     "credentialsWarning": "Esta contraseña solo se muestra ahora. Anótala y entrégasela al trabajador.",
     "close": "Cerrar",
