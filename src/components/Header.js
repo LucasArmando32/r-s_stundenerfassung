@@ -32,9 +32,12 @@ export default async function Header({ profile }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden text-sm text-neutral-500 sm:inline">
+          <Link
+            href="/profile"
+            className="hidden text-sm text-neutral-500 hover:text-brand sm:inline"
+          >
             {profile?.nombre}
-          </span>
+          </Link>
           <LanguageSwitcher />
           <LogoutButton />
         </div>

@@ -115,11 +115,16 @@ export async function buildStundenrapport(fromYm, toYm) {
         .filter((r) => r.obrero_id === worker.tagesplan_obrero_id)
         .map((r) => [r.fecha, r.reisezeit_minutos])
     );
+    const standortByFecha = Object.fromEntries(
+      reiseData
+        .filter((r) => r.obrero_id === worker.tagesplan_obrero_id)
+        .map((r) => [r.fecha, r.obra_nombre])
+    );
 
     const sheet = workbook.addWorksheet(sanitizeSheetName(worker.nombre));
     sheet.columns = [
       { width: 12 }, { width: 12 }, { width: 8 }, { width: 8 },
-      { width: 8 }, { width: 8 }, { width: 10 }, { width: 12 }, { width: 22 },
+      { width: 8 }, { width: 8 }, { width: 10 }, { width: 12 }, { width: 18 }, { width: 22 },
     ];
 
     const nameRow = sheet.addRow([worker.nombre]);
@@ -129,7 +134,7 @@ export async function buildStundenrapport(fromYm, toYm) {
 
     for (const week of weeks) {
       const headerRow = sheet.addRow([
-        "Tag", "Datum", "von", "bis", "von", "bis", "Stunden", "Reisezeit", "Notiz",
+        "Tag", "Datum", "von", "bis", "von", "bis", "Stunden", "Reisezeit", "Standort", "Notiz",
       ]);
       headerRow.font = { bold: true };
 
@@ -142,6 +147,7 @@ export async function buildStundenrapport(fromYm, toYm) {
         const fecha = format(day, "yyyy-MM-dd");
         const entry = byFecha[fecha];
         const reiseMin = reiseByFecha[fecha] || 0;
+        const standort = standortByFecha[fecha];
         const row = sheet.addRow([
           WEEKDAY_NAMES_DE[day.getDay()],
           format(day, "dd.MM.yyyy"),
@@ -152,7 +158,7 @@ export async function buildStundenrapport(fromYm, toYm) {
           weekTotal += horas;
           if (horas >= MITTAGESSEN_MIN_HORAS) mittagessen += 1;
           row.getCell(7).value = horas;
-          row.getCell(9).value = entry.nota || "";
+          row.getCell(10).value = entry.nota || "";
 
           if (entry.es_feriado) {
             row.getCell(3).value = "Feiertag";
@@ -174,6 +180,9 @@ export async function buildStundenrapport(fromYm, toYm) {
         if (reiseMin > 0) {
           weekReise += reiseMin;
           row.getCell(8).value = `${reiseMin} min`;
+        }
+        if (standort) {
+          row.getCell(9).value = standort;
         }
       }
 
@@ -199,10 +208,10 @@ export async function buildStundenrapport(fromYm, toYm) {
   return workbook;
 }
 
-// Reisezeit lives in the Tagesplan app's tables, on the same shared
-// Supabase/Postgres instance. Every day a worker was assigned to a real
-// Baustelle (asignaciones_diarias), that site's fixed reisezeit_minutos
-// applies — set once by the jefa per site (Lager -> Baustelle).
+// Reisezeit and Standort live in the Tagesplan app's tables, on the same
+// shared Supabase/Postgres instance. Every day a worker was assigned to a
+// real Baustelle (asignaciones_diarias), that site's name and fixed
+// reisezeit_minutos apply — set once by the jefa per site (Lager -> Baustelle).
 async function fetchReisezeit(obreroIds, from, to) {
   if (!obreroIds.length) return [];
 
@@ -212,7 +221,7 @@ async function fetchReisezeit(obreroIds, from, to) {
   const adminClient = createAdminClient();
   const { data, error } = await adminClient
     .from("asignaciones_diarias")
-    .select("obrero_id, fecha, obras(reisezeit_minutos)")
+    .select("obrero_id, fecha, obras(nombre, reisezeit_minutos)")
     .in("obrero_id", obreroIds)
     .gte("fecha", from)
     .lte("fecha", to);
@@ -223,5 +232,6 @@ async function fetchReisezeit(obreroIds, from, to) {
     obrero_id: row.obrero_id,
     fecha: row.fecha,
     reisezeit_minutos: row.obras?.reisezeit_minutos || 0,
+    obra_nombre: row.obras?.nombre || "",
   }));
 }

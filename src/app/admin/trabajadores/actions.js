@@ -84,6 +84,42 @@ export async function createWorker(_prevState, formData) {
   return { success: true, username, password, nombre: `${nombre} ${apellido}` };
 }
 
+async function applyWorkerPassword(userId, password) {
+  const adminClient = createAdminClient();
+
+  const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+    password,
+  });
+  if (authError) return { error: "db" };
+
+  const { error: credError } = await adminClient
+    .from("worker_credentials")
+    .upsert(
+      { user_id: userId, password_plano: password, actualizado_en: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
+  if (credError) return { error: "db" };
+
+  revalidatePath("/admin/trabajadores");
+  return { success: true, password };
+}
+
+export async function resetWorkerPassword(userId) {
+  const admin = await requireAdmin();
+  if (!admin) return { error: "auth" };
+
+  return applyWorkerPassword(userId, generarPassword());
+}
+
+export async function setWorkerPassword(userId, password) {
+  const admin = await requireAdmin();
+  if (!admin) return { error: "auth" };
+
+  if (!password || password.length < 8) return { error: "tooShort" };
+
+  return applyWorkerPassword(userId, password);
+}
+
 export async function setWorkerActive(userId, activo) {
   const admin = await requireAdmin();
   if (!admin) return { error: "auth" };

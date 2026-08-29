@@ -80,7 +80,11 @@
     "activate": "Reactivar",
     "list": "Trabajadores existentes",
     "confirmDeactivate": "¿Desactivar este trabajador? No podrá volver a iniciar sesión.",
-    "confirmActivate": "¿Reactivar este trabajador?"
+    "confirmActivate": "¿Reactivar este trabajador?",
+    "resetPassword": "Restablecer contraseña",
+    "confirmResetPassword": "¿Generar una nueva contraseña para este trabajador? La contraseña anterior dejará de funcionar.",
+    "editPassword": "Editar contraseña",
+    "passwordTooShort": "La contraseña debe tener al menos 8 caracteres."
   },
   "export": {
     "title": "Exportar a Excel",
@@ -89,5 +93,14 @@
     "monthFrom": "Mes desde",
     "monthTo": "Mes hasta",
     "download": "Descargar Excel"
+  },
+  "profile": {
+    "title": "Mi cuenta",
+    "newPassword": "Nueva contraseña",
+    "confirmPassword": "Confirmar nueva contraseña",
+    "submit": "Cambiar contraseña",
+    "tooShortError": "La contraseña debe tener al menos 8 caracteres.",
+    "mismatchError": "Las contraseñas no coinciden.",
+    "success": "Contraseña cambiada correctamente."
   }
 }
