@@ -208,6 +208,15 @@ export async function buildStundenrapport(fromYm, toYm) {
   return workbook;
 }
 
+// obras.reisezeit_minutos is the one-way time from Lager to the Baustelle
+// (set once by the jefa). The paid travel time is the round trip minus a
+// 30-minute unpaid allowance, floored at 0 if the round trip alone doesn't
+// reach 30 minutes.
+function calcularReisezeitPagada(minutosIda) {
+  const idaYVuelta = minutosIda * 2;
+  return idaYVuelta < 30 ? 0 : idaYVuelta - 30;
+}
+
 // Reisezeit and Standort live in the Tagesplan app's tables, on the same
 // shared Supabase/Postgres instance. Every day a worker was assigned to a
 // real Baustelle (asignaciones_diarias), that site's name and fixed
@@ -231,7 +240,7 @@ async function fetchReisezeit(obreroIds, from, to) {
   return data.map((row) => ({
     obrero_id: row.obrero_id,
     fecha: row.fecha,
-    reisezeit_minutos: row.obras?.reisezeit_minutos || 0,
+    reisezeit_minutos: calcularReisezeitPagada(row.obras?.reisezeit_minutos || 0),
     obra_nombre: row.obras?.nombre || "",
   }));
 }
