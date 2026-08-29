@@ -1,11 +1,13 @@
 import ExcelJS from "exceljs";
-import { getDaysInMonth } from "date-fns";
+import {
+  startOfWeek,
+  endOfWeek,
+  addWeeks,
+  addDays,
+  format,
+  endOfMonth,
+} from "date-fns";
 import getDb from "./db";
-
-const MONTH_NAMES_DE = [
-  "Januar", "Februar", "März", "April", "Mai", "Juni",
-  "Juli", "August", "September", "Oktober", "November", "Dezember",
-];
 
 const HOLIDAY_FILL = {
   type: "pattern",
@@ -13,86 +15,153 @@ const HOLIDAY_FILL = {
   fgColor: { argb: "FFF5DCDC" },
 };
 
-function monthsBetween(fromYm, toYm) {
+const NAME_FILL = {
+  type: "pattern",
+  pattern: "solid",
+  fgColor: { argb: "FFFFF3B0" },
+};
+
+const WEEKDAY_NAMES_DE = [
+  "Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag",
+];
+
+const MITTAGESSEN_MIN_HORAS = 5.5;
+
+function sanitizeSheetName(name) {
+  return name.replace(/[*?:\\/[\]]/g, "").slice(0, 31) || "Mitarbeiter";
+}
+
+// Approximates a morning/afternoon split from a single start/end/break
+// entry — we don't store when the break actually started, so the break is
+// centered in the middle of the working span (always fits, always
+// deterministic). This is a display approximation, not the literal break
+// time the person took.
+function splitJornada(horaInicio, horaFin, pausaMinutos) {
+  const [h1, m1] = horaInicio.split(":").map(Number);
+  const [h2, m2] = horaFin.split(":").map(Number);
+  const inicioMin = h1 * 60 + m1;
+  const finMin = h2 * 60 + m2;
+  const mid = (inicioMin + finMin) / 2;
+  const pausa = Number(pausaMinutos) || 0;
+
+  const toHHMM = (totalMin) => {
+    const h = Math.floor(totalMin / 60);
+    const m = Math.round(totalMin % 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  };
+
+  return {
+    von1: toHHMM(inicioMin),
+    bis1: toHHMM(mid - pausa / 2),
+    von2: toHHMM(mid + pausa / 2),
+    bis2: toHHMM(finMin),
+  };
+}
+
+function weeksInRange(fromYm, toYm) {
   const [fy, fm] = fromYm.split("-").map(Number);
   const [ty, tm] = toYm.split("-").map(Number);
-  const months = [];
-  let y = fy;
-  let m = fm;
-  while (y < ty || (y === ty && m <= tm)) {
-    months.push({ year: y, month: m });
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
-    }
+  const rangeStart = new Date(fy, fm - 1, 1);
+  const rangeEnd = endOfMonth(new Date(ty, tm - 1, 1));
+
+  const weeks = [];
+  let cursor = startOfWeek(rangeStart, { weekStartsOn: 1 });
+  const lastWeekStart = startOfWeek(rangeEnd, { weekStartsOn: 1 });
+  while (cursor <= lastWeekStart) {
+    weeks.push({ start: cursor, end: endOfWeek(cursor, { weekStartsOn: 1 }) });
+    cursor = addWeeks(cursor, 1);
   }
-  return months;
+  return weeks;
 }
 
 export async function buildStundenrapport(fromYm, toYm) {
   const db = getDb();
-  const months = monthsBetween(fromYm, toYm).slice(0, 24);
-
-  const workers = db
-    .prepare("select nombre from users where rol = 'trabajador' order by nombre")
-    .all();
-  const workerNames = workers.map((w) => w.nombre);
-
+  const weeks = weeksInRange(fromYm, toYm);
   const workbook = new ExcelJS.Workbook();
 
-  for (const { year, month } of months) {
-    const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
-    const daysInMonth = getDaysInMonth(new Date(year, month - 1, 1));
-    const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+  if (weeks.length === 0) {
+    workbook.addWorksheet("Leer");
+    return workbook;
+  }
 
+  const overallStart = format(weeks[0].start, "yyyy-MM-dd");
+  const overallEnd = format(weeks[weeks.length - 1].end, "yyyy-MM-dd");
+
+  const workers = db
+    .prepare("select id, nombre from users where rol = 'trabajador' order by nombre")
+    .all();
+
+  for (const worker of workers) {
     const entries = db
       .prepare(
-        `select te.fecha, te.horas_calculadas, te.es_feriado, u.nombre
-         from time_entries te
-         join users u on u.id = te.user_id
-         where te.fecha >= ? and te.fecha <= ?`
+        `select * from time_entries where user_id = ? and fecha >= ? and fecha <= ?`
       )
-      .all(monthStart, monthEnd);
+      .all(worker.id, overallStart, overallEnd);
+    const byFecha = Object.fromEntries(entries.map((e) => [e.fecha, e]));
 
-    const sheetName = `${MONTH_NAMES_DE[month - 1]} ${year}`.slice(0, 31);
-    const sheet = workbook.addWorksheet(sheetName);
-
+    const sheet = workbook.addWorksheet(sanitizeSheetName(worker.nombre));
     sheet.columns = [
-      { header: "Tag", key: "day", width: 8 },
-      ...workerNames.map((name) => ({ header: name, key: name, width: 14 })),
+      { width: 12 }, { width: 12 }, { width: 8 }, { width: 8 },
+      { width: 8 }, { width: 8 }, { width: 10 }, { width: 22 },
     ];
-    sheet.getRow(1).font = { bold: true };
 
-    const byDayWorker = {};
-    for (const e of entries) {
-      const day = Number(e.fecha.slice(8, 10));
-      byDayWorker[`${day}|${e.nombre}`] = e;
-    }
+    const nameRow = sheet.addRow([worker.nombre]);
+    nameRow.getCell(1).font = { bold: true };
+    nameRow.getCell(1).fill = NAME_FILL;
+    sheet.addRow([]);
 
-    for (let day = 1; day <= daysInMonth; day += 1) {
-      const row = { day };
-      for (const name of workerNames) {
-        const entry = byDayWorker[`${day}|${name}`];
-        row[name] = entry ? Number(entry.horas_calculadas) : null;
-      }
-      const excelRow = sheet.addRow(row);
-      for (const name of workerNames) {
-        const entry = byDayWorker[`${day}|${name}`];
-        if (entry?.es_feriado) {
-          excelRow.getCell(name).fill = HOLIDAY_FILL;
+    for (const week of weeks) {
+      const headerRow = sheet.addRow([
+        "Tag", "Datum", "von", "bis", "von", "bis", "Stunden", "Notiz",
+      ]);
+      headerRow.font = { bold: true };
+
+      let weekTotal = 0;
+      let mittagessen = 0;
+
+      for (let i = 0; i < 7; i += 1) {
+        const day = addDays(week.start, i);
+        const fecha = format(day, "yyyy-MM-dd");
+        const entry = byFecha[fecha];
+        const row = sheet.addRow([
+          WEEKDAY_NAMES_DE[day.getDay()],
+          format(day, "dd.MM.yyyy"),
+        ]);
+
+        if (entry) {
+          const horas = Number(entry.horas_calculadas);
+          weekTotal += horas;
+          if (horas >= MITTAGESSEN_MIN_HORAS) mittagessen += 1;
+          row.getCell(7).value = horas;
+          row.getCell(8).value = entry.nota || "";
+
+          if (entry.es_feriado) {
+            row.getCell(3).value = "Feiertag";
+            sheet.mergeCells(row.number, 3, row.number, 6);
+            row.getCell(3).fill = HOLIDAY_FILL;
+          } else {
+            const { von1, bis1, von2, bis2 } = splitJornada(
+              entry.hora_inicio,
+              entry.hora_fin,
+              entry.pausa_minutos
+            );
+            row.getCell(3).value = von1;
+            row.getCell(4).value = bis1;
+            row.getCell(5).value = von2;
+            row.getCell(6).value = bis2;
+          }
         }
       }
+
+      const totalRow = sheet.addRow(["Total", "", "", "", "", "", Math.round(weekTotal * 100) / 100]);
+      totalRow.font = { bold: true };
+      sheet.addRow([`Anzahl Mittagessen: ${mittagessen}`]);
+      sheet.addRow([]);
     }
 
-    const totalRow = { day: "Total" };
-    for (const name of workerNames) {
-      totalRow[name] = entries
-        .filter((e) => e.nombre === name)
-        .reduce((acc, e) => acc + Number(e.horas_calculadas), 0);
-    }
-    const totalExcelRow = sheet.addRow(totalRow);
-    totalExcelRow.font = { bold: true };
+    const sigRow = sheet.addRow(["Datum", format(new Date(), "dd.MM.yyyy"), "", "Unterschrift Arbeitgeber/In"]);
+    sigRow.getCell(1).font = { bold: true };
+    sigRow.getCell(4).font = { bold: true };
   }
 
   if (workbook.worksheets.length === 0) {
