@@ -45,7 +45,7 @@
     "noEntries": "Noch keine Einträge vorhanden.",
     "entrySaved": "Eintrag gespeichert.",
     "futureDateError": "Zukünftige Daten können nicht erfasst werden.",
-    "pastLimitError": "Dieser Tag liegt mehr als 5 Tage zurück. Bitte wende dich an die Verwaltung für eine Korrektur.",
+    "pastLimitError": "Dieser Tag liegt mehr als 10 Tage zurück. Bitte wende dich an die Verwaltung für eine Korrektur.",
     "endBeforeStartError": "Die Endzeit muss nach der Startzeit liegen.",
     "holidayBadge": "Feiertag (automatisch 8h)",
     "overrideHoliday": "Trotzdem eigene Zeiten erfassen"

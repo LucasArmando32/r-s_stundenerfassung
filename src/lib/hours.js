@@ -1,6 +1,6 @@
 import { differenceInMinutes, parseISO, startOfDay } from "date-fns";
 
-const EDIT_WINDOW_DAYS = 5;
+const EDIT_WINDOW_DAYS = 10;
 
 // hora_inicio / hora_fin as "HH:MM" strings, pausaMinutos as integer.
 // Returns worked hours rounded to 2 decimals.

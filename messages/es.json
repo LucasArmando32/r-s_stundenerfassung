@@ -45,7 +45,7 @@
     "noEntries": "Todavía no hay registros.",
     "entrySaved": "Registro guardado.",
     "futureDateError": "No se pueden registrar fechas futuras.",
-    "pastLimitError": "Este día es de hace más de 5 días. Contacta con la administración para corregirlo.",
+    "pastLimitError": "Este día es de hace más de 10 días. Contacta con la administración para corregirlo.",
     "endBeforeStartError": "La hora de fin debe ser posterior a la hora de inicio.",
     "holidayBadge": "Feriado (8h automáticas)",
     "overrideHoliday": "Registrar horas propias de todos modos"

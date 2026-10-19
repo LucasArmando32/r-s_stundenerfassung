@@ -37,7 +37,7 @@ Web app sencilla para que los trabajadores registren sus horas trabajadas, y don
 - Ver su propio historial de horas (lista + totales por semana/mes).
 - Editar o eliminar sus propias entradas, con estas reglas de fecha:
   - **No puede** registrar ni editar fechas futuras.
-  - **Sí puede** registrar o editar fechas pasadas hasta **5 días atrás** desde hoy. Pasado ese margen, solo la jefa puede corregir esa entrada desde el panel admin.
+  - **Sí puede** registrar o editar fechas pasadas hasta **10 días atrás** desde hoy. Pasado ese margen, solo la jefa puede corregir esa entrada desde el panel admin.
 
 ### 4.2 Jefa (Admin)
 
@@ -97,7 +97,7 @@ Web app sencilla para que los trabajadores registren sus horas trabajadas, y don
 
 **Criterio general:** el login existe para **identificar quién es quién** (que cada entrada de horas quede atribuida a la persona correcta, que cada uno vea solo lo suyo), no porque la información sea confidencial o sensible. No se maneja aquí ningún dato delicado (sin datos bancarios, médicos, etc.). Por eso el login se mantiene intencionalmente simple y de baja fricción (contraseña fácil de copiar/pegar, sesión persistente, sin verificaciones extra) — no hace falta añadirle seguridad de nivel bancario ni pasos adicionales "por si acaso".
 
-- Como ya no hay Row Level Security de base de datos (SQLite no lo tiene), estas reglas se aplican **en el código del backend** (las API routes / Server Actions de Next.js), verificando siempre la sesión antes de leer/escribir: un trabajador solo puede leer/escribir sus propias filas en `time_entries` (y solo dentro de la ventana de 5 días); la jefa (rol `admin`) puede leer/escribir todas, sin límite de fecha.
+- Como ya no hay Row Level Security de base de datos (SQLite no lo tiene), estas reglas se aplican **en el código del backend** (las API routes / Server Actions de Next.js), verificando siempre la sesión antes de leer/escribir: un trabajador solo puede leer/escribir sus propias filas en `time_entries` (y solo dentro de la ventana de 10 días); la jefa (rol `admin`) puede leer/escribir todas, sin límite de fecha.
 - Rutas protegidas: si no has iniciado sesión, se redirige a `/login`. Si un trabajador intenta entrar a `/admin`, se le deniega el acceso.
 
 ## 8. Idiomas (i18n)
